@@ -2,7 +2,9 @@ import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
+import requests
 from huggingface_hub import hf_hub_download
+from io import BytesIO
 
 
 # Download trained model from Hugging Face
@@ -15,42 +17,104 @@ model_path = hf_hub_download(
 model = YOLO(model_path)
 
 
-# Page title
+# Render bridge
+BRIDGE_URL = "https://egg-quality-detection.onrender.com"
+
+
 st.title("🥚 Egg Quality Detection")
+st.write("Raspberry Pi Camera / Manual Upload → YOLO11x Detection")
 
-st.write("Upload an egg image to test the trained YOLO11x model.")
 
+# -----------------------------
+# IMAGE SOURCE
+# -----------------------------
 
-# Upload image
-uploaded_file = st.file_uploader(
-    "Upload an egg image",
-    type=["jpg", "jpeg", "png"]
+source = st.radio(
+    "Choose image source:",
+    [
+        "📷 Raspberry Pi Camera",
+        "📁 Upload Image"
+    ]
 )
 
 
-# If image is uploaded
-if uploaded_file is not None:
+# -----------------------------
+# RASPBERRY PI IMAGE
+# -----------------------------
 
-    # Read uploaded image
-    image = Image.open(uploaded_file).convert("RGB")
+if source == "📷 Raspberry Pi Camera":
 
-    # Display uploaded image
-    st.image(image, caption="Uploaded Image")
+    if st.button("📷 Get Latest Egg Image"):
 
-    # Detection button
+        response = requests.get(
+            f"{BRIDGE_URL}/latest"
+        )
+
+        if response.status_code == 200:
+
+            try:
+                image = Image.open(
+                    BytesIO(response.content)
+                ).convert("RGB")
+
+                st.session_state["egg_image"] = image
+
+            except Exception:
+                st.error("No valid image is available from the Raspberry Pi.")
+
+        else:
+            st.error("Could not get image from Raspberry Pi.")
+
+
+# -----------------------------
+# MANUAL IMAGE UPLOAD
+# -----------------------------
+
+else:
+
+    uploaded_file = st.file_uploader(
+        "Upload an egg image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded_file is not None:
+
+        image = Image.open(
+            uploaded_file
+        ).convert("RGB")
+
+        st.session_state["egg_image"] = image
+
+
+# -----------------------------
+# DISPLAY IMAGE
+# -----------------------------
+
+if "egg_image" in st.session_state:
+
+    image = st.session_state["egg_image"]
+
+    st.image(
+        image,
+        caption="Egg Image",
+        use_container_width=True
+    )
+
+
+    # -----------------------------
+    # DETECTION
+    # -----------------------------
+
     if st.button("🔍 Detect Egg"):
 
-        # Convert PIL image to NumPy array
         image_array = np.array(image)
 
-        # Run YOLO
         results = model(image_array)
 
-        # Draw detections
         result_image = results[0].plot()
 
-        # Display result
         st.image(
             result_image,
-            caption="Detection Result"
+            caption="Detection Result",
+            use_container_width=True
         )
